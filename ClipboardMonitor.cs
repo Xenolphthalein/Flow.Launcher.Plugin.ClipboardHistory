@@ -26,6 +26,36 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
             ClipboardWatcher.Stop();
         }
 
+        public static class ClipboardWrapper {
+            private static T LoopCall<T>(Func<T> func, int timeout = 1) {
+                T result = default(T);
+                DateTimeOffset startTime = DateTimeOffset.UtcNow;
+                while (true) {
+                    try {
+                        result = func();
+                    } catch (ExternalException) {
+                        Thread.Sleep(10);
+                        if (DateTimeOffset.UtcNow - startTime > TimeSpan.FromSeconds(timeout))
+                            return result;
+                        continue;
+                    }
+                    break;
+                }
+                return result;
+            }
+
+            public static IDataObject GetDataObject() {
+                return LoopCall(() => System.Windows.Forms.Clipboard.GetDataObject());
+            }
+
+            public static bool SetText(string text) {
+                return LoopCall(() => {
+                    System.Windows.Forms.Clipboard.SetText(text);
+                    return true;
+                });
+            }
+        }
+
         class ClipboardWatcher : Form
         {
             // static instance of this form
@@ -49,6 +79,7 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
                     Application.Run(new ClipboardWatcher());
                 }));
                 t.SetApartmentState(ApartmentState.STA); // give the [STAThread] attribute
+                t.IsBackground = true;
                 t.Start();
             }
 
@@ -117,7 +148,9 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
 
             private void ClipChanged()
             {
-                IDataObject iData = System.Windows.Forms.Clipboard.GetDataObject();
+                IDataObject iData = ClipboardWrapper.GetDataObject();
+                if (iData == null)
+                    return;
 
                 ClipboardFormat? format = null;
 

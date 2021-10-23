@@ -2,20 +2,24 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using Flow.Launcher.Plugin;
+using System.Threading.Tasks;
+using WindowsInput;
+using WindowsInput.Native;
 
 namespace Flow.Launcher.Plugin.ClipboardHistory
 {
     public class ClipboardHistory : IPlugin
     {
-        private const int MaxDataCount = 300;
+        private const int MaxDataCount = 5000;
         //private readonly KeyboardSimulator keyboardSimulator = new KeyboardSimulator(new InputSimulator());
+        private readonly InputSimulator inputSimulator = new InputSimulator();
         private PluginInitContext context;
-        List<string> dataList = new List<string>();
+        LinkedList<string> dataList = new LinkedList<string>();
 
         public List<Result> Query(Query query)
         {
             var results = new List<Result>();
-            List<string> displayData;
+            IEnumerable<string> displayData;
 
             if (query.Terms.Length == 0)
             {
@@ -23,28 +27,22 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
             }
             else
             {
-                displayData = dataList.Where(i => i.ToLower().Contains(query.SecondToEndSearch.ToLower()))
-                        .ToList();
+                displayData = dataList.Where(i => i.ToLower().Contains(query.SecondToEndSearch.ToLower()));
             }
 
             results.AddRange(displayData.Select(o => new Result
             {
-                Title = o.Trim(),
+                Title = o.Trim().Replace("\r\n", " ").Replace('\n', ' '),
                 IcoPath = "Images\\clipboard.png",
                 Action = c =>
                 {
-                    try
-                    {
-                        System.Windows.Forms.Clipboard.SetText(o);
-                        return true;
-                    }
-                    catch (Exception e)
-                    {
-                        context.API.ShowMsg("Error", e.Message, null);
+                    if (!ClipboardMonitor.ClipboardWrapper.SetText(o))
                         return false;
-                    }
+
+                    Task.Delay(50).ContinueWith(t => inputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.VK_V));
+                    return true;
                 }
-            }).Reverse());
+            }));
             return results;
         }
 
@@ -64,15 +62,16 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
             {
                 if (data != null && !string.IsNullOrEmpty(data.ToString().Trim()))
                 {
-                    if (dataList.Contains(data.ToString()))
+                    LinkedListNode<string> node = dataList.Find(data.ToString());
+                    if (node != null)
                     {
-                        dataList.Remove(data.ToString());
+                        dataList.Remove(node);
                     }
-                    dataList.Add(data.ToString());
+                    dataList.AddFirst(data.ToString());
 
                     if (dataList.Count > MaxDataCount)
                     {
-                        dataList.Remove(dataList.Last());
+                        dataList.RemoveLast();
                     }
                 }
             }
