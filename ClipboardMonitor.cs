@@ -48,6 +48,13 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
                 return LoopCall(() => System.Windows.Forms.Clipboard.GetDataObject());
             }
 
+            public static bool SetDataObject(object data) {
+                return LoopCall(() => {
+                    System.Windows.Forms.Clipboard.SetDataObject(data);
+                    return true;
+                });
+            }
+
             public static bool SetText(string text) {
                 return LoopCall(() => {
                     System.Windows.Forms.Clipboard.SetText(text);
@@ -60,6 +67,7 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
         {
             // static instance of this form
             private static ClipboardWatcher mInstance;
+            private static Thread mThread;
 
             // needed to dispose this form
             static IntPtr nextClipboardViewer;
@@ -74,27 +82,31 @@ namespace Flow.Launcher.Plugin.ClipboardHistory
                 if (mInstance != null)
                     return;
 
-                Thread t = new Thread(new ParameterizedThreadStart(x =>
+                mThread = new Thread(new ParameterizedThreadStart(x =>
                 {
                     Application.Run(new ClipboardWatcher());
                 }));
-                t.SetApartmentState(ApartmentState.STA); // give the [STAThread] attribute
-                t.IsBackground = true;
-                t.Start();
+                mThread.SetApartmentState(ApartmentState.STA); // give the [STAThread] attribute
+                mThread.IsBackground = true;
+                mThread.Start();
             }
 
             // stop listening (dispose form)
             public static void Stop()
             {
+                if (mInstance == null)
+                    return;
+
                 mInstance.Invoke(new MethodInvoker(() =>
                 {
                     ChangeClipboardChain(mInstance.Handle, nextClipboardViewer);
                 }));
                 mInstance.Invoke(new MethodInvoker(mInstance.Close));
-
                 mInstance.Dispose();
-
                 mInstance = null;
+
+                mThread.Join();
+                mThread = null;
             }
 
             // on load: (hide this window)
